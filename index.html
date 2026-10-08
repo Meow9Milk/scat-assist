@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCAT研究アシスト</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      color: #202738;
+      font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+    }
+    header {
+      padding: 24px 5%;
+      background: #243b68;
+      color: white;
+    }
+    header h1 { margin: 0 0 6px; font-size: 26px; }
+    header p { margin: 0; color: #dce6fa; }
+    main { max-width: 1200px; margin: 28px auto; padding: 0 20px; }
+    .card {
+      padding: 22px;
+      margin-bottom: 22px;
+      background: white;
+      border: 1px solid #e2e7f0;
+      border-radius: 14px;
+      box-shadow: 0 4px 14px #2030500d;
+    }
+    h2 { margin: 0 0 12px; font-size: 19px; }
+    .hint { color: #657087; font-size: 14px; line-height: 1.7; }
+    textarea { font: inherit; }
+    #transcript {
+      width: 100%;
+      min-height: 150px;
+      padding: 13px;
+      border: 1px solid #ccd4e2;
+      border-radius: 9px;
+      line-height: 1.7;
+      resize: vertical;
+    }
+    button {
+      padding: 10px 16px;
+      margin: 12px 8px 0 0;
+      border: 0;
+      border-radius: 8px;
+      background: #315da8;
+      color: white;
+      font: inherit;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { background: #244980; }
+    button.secondary { background: #e8edf6; color: #26334a; }
+    button.local-analysis { background: #7a4b19; }
+    button.local-analysis:hover { background: #603a14; }
+.copy-status { min-height: 1.5em; margin: 10px 0 0; color: #18794e; font-size: 14px; }
+.table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 1100px; border-collapse: collapse; }
+    th, td { padding: 9px; border: 1px solid #dce2ec; vertical-align: top; }
+    th { background: #edf2fa; text-align: left; font-size: 13px; }
+    td:first-child { width: 220px; background: #fbfcfe; }
+    td textarea { width: 100%; min-height: 90px; padding: 8px; border: 1px solid #d7deea; border-radius: 6px; }
+    .empty { padding: 24px; color: #778197; text-align: center; }
+    footer { padding: 10px 0 30px; color: #657087; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SCAT研究アシスト</h1>
+    <p>インタビューの発言を整理し、SCAT分析の過程を記録するための試作品</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. インタビューの発言を入力</h2>
+      <p class="hint">1つの発言または意味のまとまりごとに、改行して入力してください。</p>
+      <textarea id="transcript" placeholder="例：取引先が紙を希望するため、電子化の相談を進めにくいです。"></textarea>
+      <br>
+      <button id="makeTable">発言を表にする</button>
+      <button id="downloadCsv" class="secondary">表をCSVで保存</button>
+      <button id="copyPrompt">依頼文をコピー</button>
+      <button id="localAnalysis" class="local-analysis">このアプリでSCAT分析</button>
+      <p id="copyStatus" class="copy-status" role="status" aria-live="polite"></p>
+</section>
+
+    <section class="card">
+      <h2>2. SCAT分析表</h2>
+      <p class="hint">各欄を編集できます。「このアプリでSCAT分析」を押すと、外部送信なしで分析の下書きを作成します。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>テクスト（発言）</th>
+              <th>〈1〉注目すべき語句</th>
+              <th>〈2〉語句の言いかえ</th>
+              <th>〈3〉テクスト外の概念</th>
+              <th>〈4〉テーマ・構成概念</th>
+              <th>〈5〉疑問・課題</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td class="empty" colspan="6">発言を入力して「発言を表にする」を押してください。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>この試作品は分析を補助する記録用です。解釈は原文と文脈を確認して検討してください。</footer>
+  </main>
+
+  <script>
+    const transcript = document.getElementById("transcript");
+    const tableBody = document.getElementById("tableBody");
+    const copyStatus = document.getElementById("copyStatus");
+    const localAnalysisButton = document.getElementById("localAnalysis");
+
+    const localConcepts = [
+      { words: ["不安", "心配", "懸念", "怖い"], concept: "不確実性・心理的負担" },
+      { words: ["安心", "信頼", "安全"], concept: "安心感・信頼" },
+      { words: ["難しい", "困る", "進めにくい", "できない", "無理"], concept: "実行上の障壁・制約" },
+      { words: ["便利", "効率", "楽", "早い"], concept: "利便性・効率化" },
+      { words: ["紙", "書類", "手続き", "対面"], concept: "既存慣行・従来の手段" },
+      { words: ["電子", "デジタル", "オンライン", "システム", "新しい"], concept: "デジタル化・新しい手段" },
+      { words: ["時間", "忙しい", "余裕"], concept: "時間資源・実施余力" },
+      { words: ["希望", "要望", "求め", "したい"], concept: "期待・要望" },
+      { words: ["使える", "使い", "現場", "実際"], concept: "実行可能性・適用可能性" },
+      { words: ["相談", "話し合", "調整", "取引先"], concept: "合意形成・関係者調整" }
+    ];
+
+    const MAX_SEGMENT_LENGTH = 240;
+    const MAX_DISPLAY_SEGMENTS = 120;
+
+    const splitLongLine = (line) => {
+      const sentences = line.split(/(?<=[。！？!?])/);
+      const segments = [];
+      let buffer = "";
+      sentences.forEach(sentence => {
+        let rest = sentence.trim();
+        while (rest.length > MAX_SEGMENT_LENGTH) {
+          segments.push(rest.slice(0, MAX_SEGMENT_LENGTH));
+          rest = rest.slice(MAX_SEGMENT_LENGTH).trim();
+        }
+        if (rest) {
+          const candidate = buffer ? `${buffer}${rest}` : rest;
+          if (candidate.length <= MAX_SEGMENT_LENGTH) {
+            buffer = candidate;
+          } else {
+            if (buffer) segments.push(buffer);
+            buffer = rest;
+          }
+        }
+      });
+      if (buffer) segments.push(buffer);
+      return segments;
+    };
+
+    const getAnalysisSegments = () => {
+      const allSegments = transcript.value
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .flatMap(splitLongLine);
+      return {
+        lines: allSegments.slice(0, MAX_DISPLAY_SEGMENTS),
+        omitted: Math.max(0, allSegments.length - MAX_DISPLAY_SEGMENTS)
+      };
+    };
+    const getLocalKeywords = (text) => {
+      const chunks = text
+        .replace(/[。！？!?]/g, "\n")
+        .split(/[、,\n]|は|が|を|に|へ|と|で|の|も|から|ため|ので|けれど|ですが|しかし/)
+        .map(chunk => chunk.trim())
+        .filter(chunk => chunk.length >= 2 && chunk.length <= 18);
+      return [...new Set(chunks)].slice(0, 3);
+    };
+
+    const getLocalConcepts = (text) => {
+      const matched = localConcepts
+        .filter(item => item.words.some(word => text.includes(word)))
+        .map(item => item.concept);
+      return [...new Set(matched)];
+    };
+
+    const buildLocalAnalysis = (text) => {
+      const keywords = getLocalKeywords(text);
+      const concepts = getLocalConcepts(text);
+      const keywordText = keywords.length > 0 ? keywords.map(word => `「${word}」`).join("、") : `「${text}」`;
+      const conceptText = concepts.length > 0 ? concepts.join("、") : "原文だけでは特定困難（判断保留）";
+      const concern = /不安|心配|懸念|難しい|困る|進めにくい|できない|無理|問題/.test(text);
+      const positive = /安心|便利|効率|楽|希望|良い|よい/.test(text);
+      const step2 = keywords.length > 0
+        ? `${keywords.join("・")}という状況・認識を述べている。`
+        : "発言全体の意味は、文脈を追加確認したうえで言い換える。";
+      const step4 = concepts.length > 0
+        ? concepts.slice(0, 3).join(" × ")
+        : "テーマ・構成概念は判断保留";
+      const questions = [];
+      if (concern) questions.push("何が障壁・不安の具体的な原因か");
+      if (positive) questions.push("どの条件で安心・利便性が成り立つか");
+      questions.push("発言者の立場、具体的な経験、文脈を確認したい");
+      const interpretations = [
+        `読み1（原文に沿った解釈）：${keywordText}を中心に、${step4}が語られている可能性がある。`,
+        `読み2（別の解釈）：同じ発言は、個人の感情だけでなく、環境・相手・制度などの条件への反応とも読める。`,
+        `反対の見方：${positive ? "利点の表明に見えても、実際の利用や導入を積極的に望んでいるとは限らない。" : "否定・困難の表明に見えても、条件が整えば受け入れる余地がある可能性がある。"}`,
+        "判断保留：発言だけでは意図、頻度、背景、反対事例までは確定できない。"
+      ].join("\n");
+      return {
+        step1: keywordText,
+        step2,
+        step3: conceptText,
+        step4,
+        step5: questions.join("／"),
+        interpretations
+      };
+    };
+
+    const renderLocalAnalysis = () => {
+      const { lines, omitted } = getAnalysisSegments();
+      tableBody.replaceChildren();
+      if (lines.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.className = "empty";
+        cell.textContent = "先にインタビューの発言を入力してください。";
+        row.appendChild(cell);
+        tableBody.appendChild(row);
+        copyStatus.textContent = "先にインタビューの発言を入力してください。";
+        copyStatus.style.color = "#b42318";
+        transcript.focus();
+        return;
+      }
+
+      lines.forEach(line => {
+        const analysis = buildLocalAnalysis(line);
+        const row = document.createElement("tr");
+        const quote = document.createElement("td");
+        quote.textContent = line;
+        row.appendChild(quote);
+        ["step1", "step2", "step3", "step4", "step5"].forEach((key, index) => {
+          const cell = document.createElement("td");
+          const input = document.createElement("textarea");
+          input.setAttribute("aria-label", `SCAT分析欄 ${index + 1}`);
+          input.value = analysis[key];
+          cell.appendChild(input);
+          row.appendChild(cell);
+        });
+        tableBody.appendChild(row);
+      });
+      copyStatus.textContent = omitted > 0
+        ? `外部送信なしで分析しました。長文のため先頭${MAX_DISPLAY_SEGMENTS}件を表示し、${omitted}件を省略しています。`
+        : "外部送信なしでSCAT分析の下書きを作成しました。各欄を確認・修正してください。";
+      copyStatus.style.color = "#18794e";
+    };
+    const buildAnalysisPrompt = () => {
+      const utterances = transcript.value.trim();
+      if (!utterances) return null;
+
+      return `以下のインタビュー発言を、SCAT（Steps for Coding and Theorization）の手順に沿って分析してください。
+
+【分析上の指示】
+- 〈1〉テクスト中の注目すべき語句を、原文から抜き出してください。
+- 〈2〉その語句の言いかえを示してください。
+- 〈3〉テクスト外の概念を検討してください。
+- 〈4〉テーマ・構成概念をまとめてください。
+- 〈5〉疑問・課題、追加で確認したい点を挙げてください。
+- 必ず原文の具体的な表現を根拠として示し、原文にない事実を断定しないでください。
+- 一つの解釈に決めつけず、可能な複数の解釈や、反対の見方・別の読み方も示してください。
+- 原文や文脈だけでは判断できない箇所は、推測で埋めず「判断保留」と明記してください。
+- 結果は、発言ごとに「原文／〈1〉注目すべき語句／〈2〉語句の言いかえ／〈3〉テクスト外の概念／〈4〉テーマ・構成概念／〈5〉疑問・課題／解釈の幅と根拠」の順で整理してください。
+
+【分析対象の発言】
+${utterances}`;
+    };
+
+    const fallbackCopy = (text) => {
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      helper.setAttribute("readonly", "");
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.appendChild(helper);
+      helper.select();
+      const copied = document.execCommand("copy");
+      helper.remove();
+      return copied;
+    };
+
+    document.getElementById("makeTable").addEventListener("click", () => {
+      const { lines, omitted } = getAnalysisSegments();
+      tableBody.replaceChildren();
+
+      if (lines.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.className = "empty";
+        cell.textContent = "先にインタビューの発言を入力してください。";
+        row.appendChild(cell);
+        tableBody.appendChild(row);
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      lines.forEach(line => {
+        const row = document.createElement("tr");
+        const quote = document.createElement("td");
+        quote.textContent = line;
+        row.appendChild(quote);
+
+        for (let i = 0; i < 5; i++) {
+          const cell = document.createElement("td");
+          const input = document.createElement("textarea");
+          input.setAttribute("aria-label", `SCAT分析欄 ${i + 1}`);
+          cell.appendChild(input);
+          row.appendChild(cell);
+        }
+        fragment.appendChild(row);
+      });
+      tableBody.appendChild(fragment);
+      if (omitted > 0) {
+        copyStatus.textContent = `長文のため、先頭${MAX_DISPLAY_SEGMENTS}件を表にしました。残り${omitted}件は入力欄に保持されています。`;
+        copyStatus.style.color = "#7a4b19";
+      }
+    });
+    document.getElementById("downloadCsv").addEventListener("click", () => {
+      const rows = [...tableBody.querySelectorAll("tr")];
+
+      if (rows.length === 0 || rows[0].querySelectorAll("td").length === 1) {
+        alert("先に発言を表にしてください。");
+        return;
+      }
+
+      const data = [[
+        "テクスト（発言）",
+        "〈1〉注目すべき語句",
+        "〈2〉語句の言いかえ",
+        "〈3〉テクスト外の概念",
+        "〈4〉テーマ・構成概念",
+        "〈5〉疑問・課題"
+      ]];
+
+      rows.forEach(row => {
+        const cells = [...row.querySelectorAll("td")];
+        data.push([
+          cells[0].textContent,
+          ...cells.slice(1).map(cell => cell.querySelector("textarea").value)
+        ]);
+      });
+
+      const csv = "\uFEFF" + data.map(row =>
+        row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")
+      ).join("\r\n");
+
+      const file = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(file);
+      link.download = "scat-analysis.csv";
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    document.getElementById("copyPrompt").addEventListener("click", async () => {
+      const prompt = buildAnalysisPrompt();
+      if (!prompt) {
+        copyStatus.textContent = "先にインタビューの発言を入力してください。";
+        copyStatus.style.color = "#b42318";
+        transcript.focus();
+        return;
+      }
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(prompt);
+        } else if (!fallbackCopy(prompt)) {
+          throw new Error("copy failed");
+        }
+        copyStatus.textContent = "依頼文をクリップボードにコピーしました。ChatGPTに貼り付けてください。";
+        copyStatus.style.color = "#18794e";
+      } catch (error) {
+        copyStatus.textContent = "自動コピーできませんでした。ブラウザの権限を確認してください。";
+        copyStatus.style.color = "#b42318";
+      }
+    });
+
+
+    localAnalysisButton.addEventListener("click", renderLocalAnalysis);
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
